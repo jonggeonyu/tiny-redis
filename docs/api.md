@@ -13,6 +13,27 @@
 </dd>
 </dl>
 
+## Functions
+
+<dl>
+<dt><a href="#createClient">createClient(baseUrl)</a> ⇒ <code>Object</code></dt>
+<dd><p>mini-redis HTTP API 클라이언트를 만든다. 데모 서버가 캐시로 쓴다.
+2xx와 404 외의 응답, 네트워크 오류는 Error를 던진다.</p>
+</dd>
+<dt><a href="#set">set(key, value, [ttl])</a> ⇒ <code>Promise.&lt;boolean&gt;</code></dt>
+<dd><p>키에 값을 저장한다. ttl(초, 1 이상 정수)이 없으면 만료되지 않는다.</p>
+</dd>
+<dt><a href="#get">get(key)</a> ⇒ <code>Promise.&lt;(string|null)&gt;</code></dt>
+<dd><p>키의 값을 읽는다.</p>
+</dd>
+<dt><a href="#del">del(key)</a> ⇒ <code>Promise.&lt;boolean&gt;</code></dt>
+<dd><p>키를 삭제한다.</p>
+</dd>
+<dt><a href="#expire">expire(key, ttl)</a> ⇒ <code>Promise.&lt;boolean&gt;</code></dt>
+<dd><p>키의 만료 시간을 다시 정한다.</p>
+</dd>
+</dl>
+
 <a name="module_hashtable"></a>
 
 ## hashtable
@@ -205,4 +226,68 @@ HTTP 서버를 만든다. listen하지 않은 상태로 돌려준다.
 | --- | --- | --- |
 | key | <code>string</code> | 키 |
 | ttlSec | <code>number</code> | 만료까지 초. 검증은 호출하는 쪽이 한다 |
+
+<a name="createClient"></a>
+
+## createClient(baseUrl) ⇒ <code>Object</code>
+mini-redis HTTP API 클라이언트를 만든다. 데모 서버가 캐시로 쓴다.
+2xx와 404 외의 응답, 네트워크 오류는 Error를 던진다.
+
+**Kind**: global function  
+**Returns**: <code>Object</code> - set, get, del, expire 메서드를 가진 객체  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| baseUrl | <code>string</code> | 서버 주소. 예: `http://127.0.0.1:3000` |
+
+<a name="set"></a>
+
+## set(key, value, [ttl]) ⇒ <code>Promise.&lt;boolean&gt;</code>
+키에 값을 저장한다. ttl(초, 1 이상 정수)이 없으면 만료되지 않는다.
+
+**Kind**: global function  
+**Returns**: <code>Promise.&lt;boolean&gt;</code> - 성공하면 true  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| key | <code>string</code> | 키 |
+| value | <code>string</code> | 값 |
+| [ttl] | <code>number</code> | 만료까지 초 |
+
+<a name="get"></a>
+
+## get(key) ⇒ <code>Promise.&lt;(string\|null)&gt;</code>
+키의 값을 읽는다.
+
+**Kind**: global function  
+**Returns**: <code>Promise.&lt;(string\|null)&gt;</code> - 값. 없거나 만료되었으면 null  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| key | <code>string</code> | 키 |
+
+<a name="del"></a>
+
+## del(key) ⇒ <code>Promise.&lt;boolean&gt;</code>
+키를 삭제한다.
+
+**Kind**: global function  
+**Returns**: <code>Promise.&lt;boolean&gt;</code> - 지워졌으면 true  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| key | <code>string</code> | 키 |
+
+<a name="expire"></a>
+
+## expire(key, ttl) ⇒ <code>Promise.&lt;boolean&gt;</code>
+키의 만료 시간을 다시 정한다.
+
+**Kind**: global function  
+**Returns**: <code>Promise.&lt;boolean&gt;</code> - 키가 있어 바꿨으면 true  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| key | <code>string</code> | 키 |
+| ttl | <code>number</code> | 만료까지 초(1 이상 정수) |
 
