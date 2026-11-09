@@ -106,7 +106,8 @@
 4. 1단계는 lazy expiration만. active expiration은 제안으로만 남김
 5. cache stampede는 측정만 하고 방지 기능은 만들지 않음
 6. mini-redis가 꺼지면 데모 API는 원본으로 응답
-7. 프레임워크 없이 Node 내장 `http`, 개발 의존성은 Vitest만
+7. 프레임워크 없이 Node 내장 `http`, 개발 의존성은 Vitest와 jsdoc-to-markdown
+   - 2026-11-09 변경: 사용자 요청으로 jsdoc-to-markdown을 추가했다. 함수 설명을 JSDoc에서 `docs/api.md`로 자동 생성해 발표에서 주요 함수의 동작을 설명하는 자료로 쓴다(요구사항의 "주요 함수의 동작을 설명"). 실행 의존성은 여전히 없다.
 8. 데모 원본 지연 100ms, 성능 비교 요청 수 100개, 데모 캐시 ttl 60초
 
 구현 계획(`docs/superpowers/plans/2026-11-09-mini-redis-phase1.md`)에서 정하고 2026-11-09에 승인한 값:

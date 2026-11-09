@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "bench": "node bench/compare.js"
+    "bench": "node bench/compare.js",
+    "docs": "jsdoc2md \"src/**/*.js\" > docs/api.md"
   },
   "devDependencies": {
+    "jsdoc-to-markdown": "^9.1.3",
     "vitest": "^5.1.0"
   }
 }
