@@ -1,0 +1,13 @@
+{
+  "name": "mini-redis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "bench": "node bench/compare.js"
+  },
+  "devDependencies": {
+    "vitest": "^5.1.0"
+  }
+}
