@@ -74,6 +74,7 @@ test.each([
   { value: 'v', ttl: 1.5 },
   { value: 'v', ttl: '10' },
   { value: 'v', ttl: null },
+  { value: 'v', ttl: 9007199254740993 },
 ])('잘못된 SET 본문 %j → 400', async (body) => {
   await put('a', { value: 'v0' });
   const r = await put('a', body);

@@ -9,7 +9,7 @@ const send = (res, status, body) => {
   res.end(JSON.stringify(body));
 };
 const badRequest = (res, message) => send(res, 400, { error: 'bad_request', message });
-const isTtl = (t) => Number.isInteger(t) && t >= 1;
+const isTtl = (t) => Number.isSafeInteger(t) && t >= 1;
 
 // 본문을 모두 읽은 뒤 JSON 객체로 파싱해 cb에 넘긴다. 실패하면 400을 보내고 cb를 부르지 않는다.
 function readJsonObject(req, res, cb) {

@@ -1,6 +1,7 @@
 /**
  * mini-redis HTTP API 클라이언트를 만든다. 데모 서버가 캐시로 쓴다.
- * 2xx와 404 외의 응답, 네트워크 오류는 Error를 던진다.
+ * 404는 `get`만 null(없음)로 받아들인다. `set`·`del`·`expire`의 404,
+ * 2xx·404 외의 응답, 네트워크 오류, 형식이 맞지 않는 응답 본문은 Error를 던진다.
  * @param {string} baseUrl 서버 주소. 예: `http://127.0.0.1:3000`
  * @returns {{
  *   set: function(string, string, number=): Promise<boolean>,
@@ -10,16 +11,18 @@
  * }} set, get, del, expire 메서드를 가진 객체
  */
 export function createClient(baseUrl) {
+  baseUrl = baseUrl.replace(/\/+$/, '');
   const url = (key, suffix = '') => `${baseUrl}/keys/${encodeURIComponent(key)}${suffix}`;
 
-  async function call(method, path, body) {
+  async function call(method, path, body, allow404 = false) {
     const res = await fetch(path, {
       method,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok && res.status !== 404) {
-      throw new Error(`mini-redis ${res.status} ${data.error ?? ''} ${data.message ?? ''}`.trim());
+    const data = await res.json().catch(() => null);
+    if (res.status === 404 && allow404) return { status: 404, data };
+    if (!res.ok) {
+      throw new Error(`mini-redis ${res.status} ${data?.error ?? ''} ${data?.message ?? ''}`.trim());
     }
     return { status: res.status, data };
   }
@@ -34,7 +37,8 @@ export function createClient(baseUrl) {
      */
     async set(key, value, ttl) {
       const body = ttl === undefined ? { value } : { value, ttl };
-      await call('PUT', url(key), body);
+      const { data } = await call('PUT', url(key), body);
+      if (data?.ok !== true) throw new Error('mini-redis: invalid set response');
       return true;
     },
 
@@ -44,8 +48,10 @@ export function createClient(baseUrl) {
      * @returns {Promise<(string|null)>} 값. 없거나 만료되었으면 null
      */
     async get(key) {
-      const { status, data } = await call('GET', url(key));
-      return status === 404 ? null : data.value;
+      const { status, data } = await call('GET', url(key), undefined, true);
+      if (status === 404) return null;
+      if (typeof data?.value !== 'string') throw new Error('mini-redis: invalid get response');
+      return data.value;
     },
 
     /**
@@ -54,7 +60,9 @@ export function createClient(baseUrl) {
      * @returns {Promise<boolean>} 지워졌으면 true
      */
     async del(key) {
-      return (await call('DELETE', url(key))).data.deleted;
+      const { data } = await call('DELETE', url(key));
+      if (typeof data?.deleted !== 'boolean') throw new Error('mini-redis: invalid del response');
+      return data.deleted;
     },
 
     /**
@@ -64,7 +72,9 @@ export function createClient(baseUrl) {
      * @returns {Promise<boolean>} 키가 있어 바꿨으면 true
      */
     async expire(key, ttl) {
-      return (await call('POST', url(key, '/expire'), { ttl })).data.updated;
+      const { data } = await call('POST', url(key, '/expire'), { ttl });
+      if (typeof data?.updated !== 'boolean') throw new Error('mini-redis: invalid expire response');
+      return data.updated;
     },
   };
 }

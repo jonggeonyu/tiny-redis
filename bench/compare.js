@@ -32,7 +32,7 @@ async function startDemo(useCache) {
 /**
  * 데모 API를 띄워 요청 100개를 순차로 보내고 결과를 잰다.
  * @param {boolean} useCache mini-redis 캐시를 쓸지 여부
- * @returns {Promise<{요청수: number, 총시간ms: number, 평균응답ms: number, 원본호출: number, hit비율: number}>} 측정 결과
+ * @returns {Promise<{요청수: number, 총시간ms: number, 평균응답ms: number, 원본호출: number, hit비율: string}>} 측정 결과
  */
 async function runSequential(useCache) {
   const { db, apiUrl, stop } = await startDemo(useCache);
@@ -47,7 +47,7 @@ async function runSequential(useCache) {
     총시간ms: Math.round(total),
     평균응답ms: Number((total / REQUESTS).toFixed(1)),
     원본호출: db.calls,
-    hit비율: 1 - db.calls / REQUESTS,
+    hit비율: `${Number(((1 - db.calls / REQUESTS) * 100).toFixed(1))}%`,
   };
 }
 

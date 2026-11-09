@@ -18,7 +18,8 @@
 <dl>
 <dt><a href="#createClient">createClient(baseUrl)</a> ⇒ <code>Object</code></dt>
 <dd><p>mini-redis HTTP API 클라이언트를 만든다. 데모 서버가 캐시로 쓴다.
-2xx와 404 외의 응답, 네트워크 오류는 Error를 던진다.</p>
+404는 <code>get</code>만 null(없음)로 받아들인다. <code>set</code>·<code>del</code>·<code>expire</code>의 404,
+2xx·404 외의 응답, 네트워크 오류, 형식이 맞지 않는 응답 본문은 Error를 던진다.</p>
 </dd>
 <dt><a href="#set">set(key, value, [ttl])</a> ⇒ <code>Promise.&lt;boolean&gt;</code></dt>
 <dd><p>키에 값을 저장한다. ttl(초, 1 이상 정수)이 없으면 만료되지 않는다.</p>
@@ -135,8 +136,7 @@ HTTP API 서버. store 명령을 JSON over HTTP로 내보낸다.
 <a name="module_server.createServer"></a>
 
 ### server.createServer(options) ⇒ <code>http.Server</code>
-HTTP 서버를 만든다. listen하지 않은 상태로 돌려준다.
-본문을 다 읽고 검증한 뒤 store 함수를 한 번 동기로 호출한다.
+HTTP 서버를 만든다. listen하지 않은 상태로 돌려준다.본문을 다 읽고 검증한 뒤 store 함수를 한 번 동기로 호출한다.
 
 **Kind**: static method of [<code>server</code>](#module_server)  
 **Returns**: <code>http.Server</code> - listen하지 않은 HTTP 서버  
@@ -230,8 +230,7 @@ HTTP 서버를 만든다. listen하지 않은 상태로 돌려준다.
 <a name="createClient"></a>
 
 ## createClient(baseUrl) ⇒ <code>Object</code>
-mini-redis HTTP API 클라이언트를 만든다. 데모 서버가 캐시로 쓴다.
-2xx와 404 외의 응답, 네트워크 오류는 Error를 던진다.
+mini-redis HTTP API 클라이언트를 만든다. 데모 서버가 캐시로 쓴다.404는 `get`만 null(없음)로 받아들인다. `set`·`del`·`expire`의 404,2xx·404 외의 응답, 네트워크 오류, 형식이 맞지 않는 응답 본문은 Error를 던진다.
 
 **Kind**: global function  
 **Returns**: <code>Object</code> - set, get, del, expire 메서드를 가진 객체  
