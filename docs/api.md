@@ -4,6 +4,9 @@
 <dt><a href="#module_hashtable">hashtable</a></dt>
 <dd><p>체이닝 해시 테이블. 모든 함수는 동기 함수이다.</p>
 </dd>
+<dt><a href="#module_server">server</a></dt>
+<dd><p>HTTP API 서버. store 명령을 JSON over HTTP로 내보낸다.</p>
+</dd>
 <dt><a href="#module_store">store</a></dt>
 <dd><p>키-값 저장소 명령 계층. HashTable 위에 SET/GET/DEL/EXPIRE와 lazy 만료를 올린다.
 모든 함수는 동기 함수이다(동시성 보장의 근거).</p>
@@ -102,6 +105,25 @@ FNV-1a 32비트 해시를 계산한다.
 | Param | Type | Description |
 | --- | --- | --- |
 | str | <code>string</code> | 해시할 문자열 |
+
+<a name="module_server"></a>
+
+## server
+HTTP API 서버. store 명령을 JSON over HTTP로 내보낸다.
+
+<a name="module_server.createServer"></a>
+
+### server.createServer(options) ⇒ <code>http.Server</code>
+HTTP 서버를 만든다. listen하지 않은 상태로 돌려준다.
+본문을 다 읽고 검증한 뒤 store 함수를 한 번 동기로 호출한다.
+
+**Kind**: static method of [<code>server</code>](#module_server)  
+**Returns**: <code>http.Server</code> - listen하지 않은 HTTP 서버  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| options | <code>object</code> |  |
+| options.store | <code>Object</code> | createStore()가 돌려준 저장소 |
 
 <a name="module_store"></a>
 
