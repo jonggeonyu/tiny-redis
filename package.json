@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "node bin/start.js",
     "test": "vitest run",
     "bench": "node bench/compare.js",
     "docs": "jsdoc2md \"src/**/*.js\" > docs/api.md"

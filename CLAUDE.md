@@ -13,7 +13,7 @@
 - 테스트: `npm test`
 - 성능 비교: `npm run bench`
 - API 문서 생성: `npm run docs` (`src/**/*.js`의 JSDoc → `docs/api.md`)
-- 실행: (미정). 실행 포트가 (미정)이다.
+- 실행: `npm start` (포트 6380, 환경 변수 `PORT`로 바꿀 수 있다)
 - 그 밖의 검사: (미정)
 
 ## 제약
