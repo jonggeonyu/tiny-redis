@@ -8,10 +8,12 @@
 #define HASH_TABLE_SEED_SIZE 16
 
 /*
- * 고정 크기 버킷 배열 + 단일 연결 리스트 체이닝 해시 테이블.
+ * 버킷 배열 + 단일 연결 리스트 체이닝 해시 테이블.
  * 키 해시는 테이블마다 고유한 128비트 시드를 쓰는 SipHash-2-4(64비트 출력)이다.
  * 키와 값은 길이가 지정된 임의의 바이트열이며, 저장 시 복사되어 테이블이 소유한다.
- * 리해시가 없으므로 버킷 수는 생성 후 바뀌지 않는다.
+ * 신규 키 삽입으로 개수가 버킷 수를 넘게 되면(size + 1 > bucket_count) 삽입 전에 버킷 수를
+ * 정확히 두 배로 늘리고 엔트리를 한 번에 재배치한다. 부하율 1은 현재 단계의 정책이며 성능 최적값이 아니다.
+ * 기존 키 교체는 확장하지 않고, 삭제해도 축소하지 않는다. 점진적 리해시는 하지 않는다.
  * 스레드 안전하지 않다. 동시 접근은 호출자가 직렬화해야 한다.
  */
 typedef struct hash_table hash_table_t;
@@ -32,7 +34,7 @@ typedef enum {
 
 /*
  * 운영체제 난수(Windows: BCryptGenRandom, 그 외: /dev/urandom)로 시드를 만들어 테이블을 생성한다.
- * bucket_count는 1 이상이어야 한다. 기본값은 HASH_TABLE_DEFAULT_BUCKET_COUNT이다.
+ * bucket_count는 초기 버킷 수로 1 이상이어야 한다(2의 거듭제곱일 필요 없음). 기본값은 HASH_TABLE_DEFAULT_BUCKET_COUNT이다.
  * 난수 생성에 실패하면 고정 시드로 대체하지 않고 HASH_TABLE_ERR_RANDOM_SOURCE를 반환한다.
  * 실패 시 *out_table은 NULL이 된다(out_table 자체가 NULL이 아닌 경우).
  */
@@ -53,7 +55,9 @@ void hash_table_destroy(hash_table_t *table);
  * 키에 값을 저장한다. 키가 이미 있으면 값을 교체하고 개수는 유지한다.
  * key는 key_len이 0일 때만 NULL일 수 있다. value도 같다. 빈 키도 하나의 유효한 키이다.
  * outcome이 NULL이 아니면 성공 시 INSERTED 또는 REPLACED를 기록한다.
- * 실패(NO_MEMORY 등) 시 테이블의 기존 키, 값, 개수, 체인은 변하지 않는다.
+ * 신규 키로 확장이 필요하면 엔트리와 새 버킷 배열을 모두 할당한 뒤에 재배치와 삽입을 한다.
+ * 실패(NO_MEMORY, OVERFLOW 등) 시 테이블의 기존 키, 값, 개수, 버킷 수, 체인과 *outcome은 변하지 않는다.
+ * 개수나 확장 후 버킷 배열 크기가 size_t를 넘으면 할당 전에 HASH_TABLE_ERR_OVERFLOW를 반환한다.
  */
 hash_table_status hash_table_set(hash_table_t *table,
                                  const void *key, size_t key_len,
@@ -77,7 +81,7 @@ hash_table_status hash_table_delete(hash_table_t *table, const void *key, size_t
 /* 저장된 키의 개수. table이 NULL이면 0. */
 size_t hash_table_size(const hash_table_t *table);
 
-/* 생성 시 정한 버킷 수. table이 NULL이면 0. */
+/* 현재 버킷 수(확장이 반영된 용량). table이 NULL이면 0. */
 size_t hash_table_bucket_count(const hash_table_t *table);
 
 /* 상태 코드의 짧은 설명 문자열(정적 수명). */

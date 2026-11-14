@@ -6,6 +6,10 @@
 #include "key_hash.h"
 #include "random_seed.h"
 
+#ifdef HASH_TABLE_TEST_ALLOCATOR
+#include "hash_table_test_access.h"
+#endif
+
 /* 단위 테스트 빌드에서만 할당 실패 주입과 누수 추적용 할당기로 바꾼다. */
 #ifdef HASH_TABLE_TEST_ALLOCATOR
 void *test_allocator_malloc(size_t size);
@@ -51,10 +55,16 @@ static uint8_t *copy_bytes(const void *data, size_t data_len)
     return copy;
 }
 
+static size_t compute_bucket_index(const uint8_t seed[HASH_TABLE_SEED_SIZE], size_t bucket_count,
+                                   const void *key, size_t key_len)
+{
+    const uint64_t hash = key_hash_siphash24(seed, key, key_len);
+    return (size_t)(hash % (uint64_t)bucket_count);
+}
+
 static size_t find_bucket_index(const hash_table_t *table, const void *key, size_t key_len)
 {
-    const uint64_t hash = key_hash_siphash24(table->seed, key, key_len);
-    return (size_t)(hash % (uint64_t)table->bucket_count);
+    return compute_bucket_index(table->seed, table->bucket_count, key, key_len);
 }
 
 static int entry_has_key(const hash_table_entry *entry, const void *key, size_t key_len)
@@ -119,22 +129,59 @@ static hash_table_status replace_entry_value(hash_table_entry *entry, const void
     return HASH_TABLE_OK;
 }
 
+static int is_bucket_array_size_valid(size_t bucket_count)
+{
+    return bucket_count <= SIZE_MAX / sizeof(hash_table_entry *);
+}
+
+/* 호출자가 is_bucket_array_size_valid로 바이트 크기 넘침을 먼저 확인해야 한다. */
+static hash_table_entry **allocate_empty_buckets(size_t bucket_count)
+{
+    hash_table_entry **buckets = HASH_TABLE_MALLOC(bucket_count * sizeof(*buckets));
+
+    if (buckets == NULL) {
+        return NULL;
+    }
+    for (size_t i = 0; i < bucket_count; i++) {
+        buckets[i] = NULL;
+    }
+    return buckets;
+}
+
+/*
+ * 신규 키 하나를 넣은 뒤의 버킷 수를 정한다. size + 1이 버킷 수를 넘으면 정확히 두 배로 늘린다.
+ * 부하율 1은 이번 단계의 정책일 뿐 성능 최적값이 아니다.
+ * 개수, 두 배 용량, 배열 바이트 크기의 넘침을 할당 전에 모두 검사해 테이블을 건드리기 전에 실패한다.
+ */
+static hash_table_status plan_bucket_count_for_insert(size_t size, size_t bucket_count, size_t *out_bucket_count)
+{
+    if (size == SIZE_MAX) {
+        return HASH_TABLE_ERR_OVERFLOW;
+    }
+    if (size + 1 <= bucket_count) {
+        *out_bucket_count = bucket_count;
+        return HASH_TABLE_OK;
+    }
+    if (bucket_count > SIZE_MAX / 2 || !is_bucket_array_size_valid(bucket_count * 2)) {
+        return HASH_TABLE_ERR_OVERFLOW;
+    }
+    *out_bucket_count = bucket_count * 2;
+    return HASH_TABLE_OK;
+}
+
 static hash_table_status allocate_table(size_t bucket_count, hash_table_t **out_table)
 {
-    if (bucket_count > SIZE_MAX / sizeof(hash_table_entry *)) {
+    if (!is_bucket_array_size_valid(bucket_count)) {
         return HASH_TABLE_ERR_OVERFLOW;
     }
     hash_table_t *table = HASH_TABLE_MALLOC(sizeof(*table));
     if (table == NULL) {
         return HASH_TABLE_ERR_NO_MEMORY;
     }
-    table->buckets = HASH_TABLE_MALLOC(bucket_count * sizeof(hash_table_entry *));
+    table->buckets = allocate_empty_buckets(bucket_count);
     if (table->buckets == NULL) {
         HASH_TABLE_FREE(table);
         return HASH_TABLE_ERR_NO_MEMORY;
-    }
-    for (size_t i = 0; i < bucket_count; i++) {
-        table->buckets[i] = NULL;
     }
     table->bucket_count = bucket_count;
     table->size = 0;
@@ -196,6 +243,67 @@ void hash_table_destroy(hash_table_t *table)
     HASH_TABLE_FREE(table);
 }
 
+/* 체인 순서는 의미가 없으므로 O(1)인 머리 삽입을 쓴다. */
+static void link_entry_at_head(hash_table_entry **bucket, hash_table_entry *entry)
+{
+    entry->next = *bucket;
+    *bucket = entry;
+}
+
+/*
+ * 엔트리를 복제하거나 다시 만들지 않고 next 연결만 바꿔 미리 할당한 새 배열로 옮긴 뒤 옛 배열을 해제한다.
+ * 실패할 수 있는 작업이 없으므로, 시작한 뒤에는 항상 끝까지 진행된다.
+ */
+static void move_entries_to_buckets(hash_table_t *table, hash_table_entry **new_buckets, size_t new_bucket_count)
+{
+    for (size_t i = 0; i < table->bucket_count; i++) {
+        hash_table_entry *entry = table->buckets[i];
+        while (entry != NULL) {
+            hash_table_entry *next = entry->next;
+            const size_t index = compute_bucket_index(table->seed, new_bucket_count, entry->key, entry->key_len);
+            link_entry_at_head(&new_buckets[index], entry);
+            entry = next;
+        }
+    }
+    HASH_TABLE_FREE(table->buckets);
+    table->buckets = new_buckets;
+    table->bucket_count = new_bucket_count;
+}
+
+/*
+ * 준비 단계(넘침 검사, 엔트리/키/값 복사, 필요 시 확장 배열 할당)를 모두 마친 뒤에만 체인을 바꾼다.
+ * 준비가 실패하면 만든 자원만 해제하므로 테이블은 그대로다.
+ * key와 value는 테이블이 빌려준 버퍼와 겹칠 수 있으므로, 체인을 바꾸기 전에 복사를 끝낸다.
+ */
+static hash_table_status insert_new_entry(hash_table_t *table,
+                                          const void *key, size_t key_len,
+                                          const void *value, size_t value_len)
+{
+    size_t target_bucket_count = 0;
+    const hash_table_status plan_status =
+        plan_bucket_count_for_insert(table->size, table->bucket_count, &target_bucket_count);
+    if (plan_status != HASH_TABLE_OK) {
+        return plan_status;
+    }
+    hash_table_entry *entry = create_entry(key, key_len, value, value_len);
+    if (entry == NULL) {
+        return HASH_TABLE_ERR_NO_MEMORY;
+    }
+    if (target_bucket_count != table->bucket_count) {
+        hash_table_entry **grown_buckets = allocate_empty_buckets(target_bucket_count);
+        if (grown_buckets == NULL) {
+            destroy_entry(entry);
+            return HASH_TABLE_ERR_NO_MEMORY;
+        }
+        move_entries_to_buckets(table, grown_buckets, target_bucket_count);
+    }
+    /* 재배치로 옛 버킷 배열이 해제되었을 수 있으므로 현재 배열에서 위치를 다시 구한다. */
+    const size_t index = find_bucket_index(table, entry->key, entry->key_len);
+    link_entry_at_head(&table->buckets[index], entry);
+    table->size++;
+    return HASH_TABLE_OK;
+}
+
 hash_table_status hash_table_set(hash_table_t *table,
                                  const void *key, size_t key_len,
                                  const void *value, size_t value_len,
@@ -205,30 +313,21 @@ hash_table_status hash_table_set(hash_table_t *table,
         return HASH_TABLE_ERR_INVALID_ARGUMENT;
     }
     hash_table_entry **bucket = &table->buckets[find_bucket_index(table, key, key_len)];
-    hash_table_entry **link = find_entry_link(bucket, key, key_len);
+    hash_table_entry *existing = *find_entry_link(bucket, key, key_len);
 
-    if (*link != NULL) {
-        const hash_table_status status = replace_entry_value(*link, value, value_len);
+    /* 기존 키 교체는 개수가 늘지 않으므로 확장하지 않는다. */
+    if (existing != NULL) {
+        const hash_table_status status = replace_entry_value(existing, value, value_len);
         if (status == HASH_TABLE_OK && outcome != NULL) {
             *outcome = HASH_TABLE_SET_REPLACED;
         }
         return status;
     }
-    if (table->size == SIZE_MAX) {
-        return HASH_TABLE_ERR_OVERFLOW;
-    }
-    hash_table_entry *entry = create_entry(key, key_len, value, value_len);
-    if (entry == NULL) {
-        return HASH_TABLE_ERR_NO_MEMORY;
-    }
-    /* 체인 순서는 의미가 없으므로 O(1)인 머리 삽입을 쓴다. */
-    entry->next = *bucket;
-    *bucket = entry;
-    table->size++;
-    if (outcome != NULL) {
+    const hash_table_status status = insert_new_entry(table, key, key_len, value, value_len);
+    if (status == HASH_TABLE_OK && outcome != NULL) {
         *outcome = HASH_TABLE_SET_INSERTED;
     }
-    return HASH_TABLE_OK;
+    return status;
 }
 
 hash_table_status hash_table_get(const hash_table_t *table,
@@ -295,3 +394,30 @@ const char *hash_table_status_message(hash_table_status status)
     }
     return "unknown status";
 }
+
+#ifdef HASH_TABLE_TEST_ALLOCATOR
+/* 테스트 빌드 전용 관찰 함수. 선언과 설명은 hash_table_test_access.h에 있다. */
+hash_table_status hash_table_test_plan_bucket_count(size_t size, size_t bucket_count, size_t *out_bucket_count)
+{
+    return plan_bucket_count_for_insert(size, bucket_count, out_bucket_count);
+}
+
+size_t hash_table_test_collect_links(const hash_table_t *table, hash_table_test_link *out, size_t capacity)
+{
+    size_t count = 0;
+
+    for (size_t i = 0; i < table->bucket_count; i++) {
+        for (const hash_table_entry *entry = table->buckets[i]; entry != NULL; entry = entry->next) {
+            if (count < capacity) {
+                out[count].bucket_index = i;
+                out[count].entry = entry;
+                out[count].next = entry->next;
+                out[count].key = entry->key;
+                out[count].key_len = entry->key_len;
+            }
+            count++;
+        }
+    }
+    return count;
+}
+#endif
